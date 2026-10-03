@@ -8,8 +8,7 @@ A small, standard-library-only helper for **authorized Python Pickle deserializa
 - Generate a low-impact command-execution proof (default: `id`) for an already-authorized deserialization test.
 - Inspect Base64/Pickle payloads with `pickletools.dis()` **without calling `pickle.loads()`**.
 - Decode the Base64 layer and preview bytes.
-- SHA-256 fingerprint generated/inspected payloads.
-- Save simple generation evidence to `evidence.json`.
+- SHA-256 fingerprint generated/inspected payloads without creating evidence files.
 
 ## Run
 
