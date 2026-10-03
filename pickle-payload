@@ -5,12 +5,9 @@ import base64
 import binascii
 import hashlib
 import io
-import json
 import pickle
 import pickletools
 import subprocess
-from datetime import datetime, timezone
-from pathlib import Path
 
 
 class BenignProof:
@@ -51,28 +48,12 @@ def safe_pickle_inspect(raw):
         return False, f"Not a valid/complete pickle: {exc}"
 
 
-def save_evidence(kind, raw, command=None):
-    evidence = {
-        "tool": "pickle-payload",
-        "test": "Python pickle deserialization",
-        "payload_type": kind,
-        "encoding": "base64",
-        "sha256": fingerprint(raw),
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "result": "payload-generated",
-    }
-    if command is not None:
-        evidence["command"] = command
-    Path("evidence.json").write_text(json.dumps(evidence, indent=2) + "\n")
-    print("Evidence      : evidence.json")
-
 
 def generate_harmless():
     raw, encoded = b64_pickle({"test": "hello"})
     print("\nBase64 payload:")
     print(encoded)
     print("\nSHA-256      :", fingerprint(raw))
-    save_evidence("harmless-data", raw)
 
 
 def generate_proof():
@@ -83,7 +64,6 @@ def generate_proof():
     print(encoded)
     print("\nSHA-256      :", fingerprint(raw))
     print("Local command : NOT executed")
-    save_evidence("benign-command-proof", raw, command)
 
 
 def inspect_payload():
